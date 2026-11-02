@@ -75,7 +75,7 @@ describe("HistorySwipeNavigation", () => {
       <>
         <div data-slot="sidebar" data-testid="sidebar">
           <SidebarProjectSwipe
-            groups={[{ projectKey: "alpha", displayName: "Alpha", pinned: true }]}
+            groups={[{ projectKey: "alpha", pinned: true }]}
             scopeKeys={[]}
             onSelect={onSelect}
             contentRef={{ current: null }}
@@ -92,54 +92,41 @@ describe("HistorySwipeNavigation", () => {
     expect(navigateHistory).toHaveBeenCalledTimes(navigations);
   });
 
-  it("names the destination project during the swipe", async () => {
-    await using screen = await render(
-      <div data-slot="sidebar" data-testid="sidebar">
-        <SidebarProjectSwipe
-          groups={[{ projectKey: "alpha", displayName: "Alpha", pinned: true }]}
-          scopeKeys={[]}
-          onSelect={vi.fn()}
-          contentRef={{ current: null }}
-        />
-      </div>,
-    );
-
-    screen
-      .getByTestId("sidebar")
-      .element()
-      .dispatchEvent(new WheelEvent("wheel", { deltaX: 60, bubbles: true, composed: true }));
-
-    await expect.element(screen.getByText("Alpha")).toBeInTheDocument();
-  });
-
   it.each([
     ["forward", 130, -130, -200],
     ["back", -130, 130, 200],
   ] as const)(
-    "a %s swipe slides the list out and swaps it off screen",
+    "a %s swipe slides a copy of the old list out as the new list slides in",
     async (_direction, deltaX, tracked, offScreen) => {
       const content = document.createElement("div");
-      const swappedAt: number[] = [];
+      const onSelect = vi.fn();
       await using screen = await render(
         <div data-slot="sidebar">
           <div data-slot="scroll-area-viewport" data-testid="viewport" style={{ width: 200 }}>
             <div ref={(node) => node?.append(content)} />
           </div>
           <SidebarProjectSwipe
-            groups={[{ projectKey: "alpha", displayName: "Alpha", pinned: true }]}
+            groups={[{ projectKey: "alpha", pinned: true }]}
             scopeKeys={[]}
-            onSelect={() => swappedAt.push(viewportOffset(viewport))}
+            onSelect={onSelect}
             contentRef={{ current: content }}
           />
         </div>,
       );
       const viewport = screen.getByTestId("viewport").element() as HTMLElement;
+      const readOutgoing = () => viewport.nextElementSibling as HTMLElement | null;
+      const readKeyframes = (element: HTMLElement) =>
+        (element.getAnimations()[0]!.effect as KeyframeEffect).getKeyframes();
 
       viewport.dispatchEvent(new WheelEvent("wheel", { deltaX, bubbles: true, composed: true }));
       expect(viewport.style.transform).toBe(`translateX(${tracked}px)`);
       viewport.dispatchEvent(new WheelEvent("wheel", { deltaX: 0, bubbles: true, composed: true }));
 
-      await vi.waitFor(() => expect(swappedAt).toEqual([offScreen]));
+      expect(onSelect).toHaveBeenCalledOnce();
+      expect(readKeyframes(readOutgoing()!).at(-1)?.transform).toBe(`translateX(${offScreen}px)`);
+      expect(readKeyframes(viewport)[0]?.transform).toBe(`translateX(${-offScreen}px)`);
+
+      await vi.waitFor(() => expect(readOutgoing()).toBeNull());
       await vi.waitFor(() => expect(viewport.getAnimations()).toEqual([]));
       expect(viewportOffset(viewport)).toBe(0);
     },
@@ -154,7 +141,7 @@ describe("HistorySwipeNavigation", () => {
           <div ref={(node) => node?.append(content)} />
         </div>
         <SidebarProjectSwipe
-          groups={[{ projectKey: "alpha", displayName: "Alpha", pinned: true }]}
+          groups={[{ projectKey: "alpha", pinned: true }]}
           scopeKeys={[]}
           onSelect={onSelect}
           contentRef={{ current: content }}

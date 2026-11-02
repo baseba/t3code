@@ -160,8 +160,8 @@ cannot drag threads, and the Working section is off. Each device keeps its own c
 
 In the desktop app on a Mac, swipe two fingers left or right over the sidebar to change the project
 filter. The swipe moves through **All projects** and your [pinned projects](./project-settings.md#pin-and-archive-projects),
-or through every project if none is pinned, and wraps around at either end. A label shows where the
-swipe will land. Everywhere else in the window, the same swipe still goes back and forward.
+or through every project if none is pinned, and wraps around at either end. Everywhere else in the
+window, the same swipe still goes back and forward.
 
 ## Settle finished work
 

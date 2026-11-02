@@ -1083,19 +1083,17 @@ export function filterSidebarProjectScopeItems<TItem extends { readonly value: s
 export function resolveSidebarProjectSwipeTarget(input: {
   readonly groups: ReadonlyArray<{
     readonly projectKey: string;
-    readonly displayName: string;
     readonly pinned: boolean;
   }>;
   readonly scopeKeys: readonly string[];
   readonly direction: "back" | "forward";
-}): { readonly keys: readonly string[]; readonly label: string } | null {
+}): { readonly keys: readonly string[] } | null {
   if (input.groups.length === 0) return null;
   const pinned = input.groups.filter((group) => group.pinned);
   const stops = [
-    { keys: [], label: "All projects" },
+    { keys: [] },
     ...(pinned.length > 0 ? pinned : input.groups).map((group) => ({
       keys: [group.projectKey],
-      label: group.displayName,
     })),
   ];
   const forward = input.direction === "forward";

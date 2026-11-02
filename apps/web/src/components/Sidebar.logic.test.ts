@@ -816,11 +816,7 @@ describe("sortPinnedThreadsForSidebar", () => {
 });
 
 describe("resolveSidebarProjectSwipeTarget", () => {
-  const group = (projectKey: string, pinned: boolean) => ({
-    projectKey,
-    displayName: projectKey.toUpperCase(),
-    pinned,
-  });
+  const group = (projectKey: string, pinned: boolean) => ({ projectKey, pinned });
   const mixed = [group("a", true), group("b", true), group("c", false)];
   const unpinned = [group("a", false), group("b", false)];
 
@@ -838,14 +834,6 @@ describe("resolveSidebarProjectSwipeTarget", () => {
     ["enters at the last stop from a multi-selection", mixed, ["a", "b"], "back", ["b"]],
   ] as const)("%s", (_name, groups, scopeKeys, direction, keys) => {
     expect(resolveSidebarProjectSwipeTarget({ groups, scopeKeys, direction })?.keys).toEqual(keys);
-  });
-
-  it("labels the stop it lands on", () => {
-    const input = { groups: mixed, scopeKeys: [], direction: "forward" } as const;
-    expect(resolveSidebarProjectSwipeTarget(input)?.label).toBe("A");
-    expect(resolveSidebarProjectSwipeTarget({ ...input, scopeKeys: ["b"] })?.label).toBe(
-      "All projects",
-    );
   });
 
   it("has nowhere to go without projects", () => {
