@@ -1,6 +1,6 @@
 const motionTiming = { duration: 150, easing: "ease-out" };
-const swipeExitTiming = { duration: 130, easing: "ease-in", fill: "forwards" } as const;
-const swipeEnterTiming = { duration: 220, easing: "cubic-bezier(0.16, 1, 0.3, 1)" };
+const swipeExitTiming = { duration: 90, easing: "ease-in", fill: "forwards" } as const;
+const swipeEnterTiming = { duration: 150, easing: "cubic-bezier(0.16, 1, 0.3, 1)" };
 const swipeRest = { transform: "translateX(0px)", opacity: 1 };
 const rowTravel = (height: number) => Math.min(height, 40);
 // Fades clone removed rows and animate clones and entries; intervening layout reads force reflows.
