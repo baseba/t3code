@@ -1076,6 +1076,37 @@ export function filterSidebarProjectScopeItems<TItem extends { readonly value: s
   return input.items.filter((item) => item.value !== "all" && input.matches(item, query));
 }
 
+/**
+ * The scope a sidebar swipe lands on: All projects, then the pinned projects, or
+ * every project when none is pinned. A scope outside those stops enters at an end.
+ */
+export function resolveSidebarProjectSwipeTarget(input: {
+  readonly groups: ReadonlyArray<{
+    readonly projectKey: string;
+    readonly displayName: string;
+    readonly pinned: boolean;
+  }>;
+  readonly scopeKeys: readonly string[];
+  readonly direction: "back" | "forward";
+}): { readonly keys: readonly string[]; readonly label: string } | null {
+  if (input.groups.length === 0) return null;
+  const pinned = input.groups.filter((group) => group.pinned);
+  const stops = [
+    { keys: [], label: "All projects" },
+    ...(pinned.length > 0 ? pinned : input.groups).map((group) => ({
+      keys: [group.projectKey],
+      label: group.displayName,
+    })),
+  ];
+  const forward = input.direction === "forward";
+  const current =
+    input.scopeKeys.length > 1
+      ? -1
+      : stops.findIndex((stop) => stop.keys[0] === input.scopeKeys[0]);
+  if (current === -1) return forward ? stops[0]! : stops.at(-1)!;
+  return stops[(current + (forward ? 1 : -1) + stops.length) % stops.length]!;
+}
+
 interface SidebarProjectScopeMenuState {
   readonly open: boolean;
   readonly query: string;

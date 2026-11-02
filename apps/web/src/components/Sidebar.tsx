@@ -252,6 +252,7 @@ import {
 } from "./ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
+import { SidebarProjectSwipe } from "./sidebar/SidebarProjectSwipe";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { TooltipProvider } from "./ui/tooltip";
 import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../composerDraftStore";
@@ -3641,6 +3642,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         </SidebarGroup>
       </SidebarContent>
       <SidebarChromeFooter />
+      {isElectron ? (
+        <SidebarProjectSwipe
+          groups={scopeGroups}
+          scopeKeys={projectScopeKeys}
+          onSelect={setProjectScopeKeys}
+        />
+      ) : null}
     </>
   );
 }

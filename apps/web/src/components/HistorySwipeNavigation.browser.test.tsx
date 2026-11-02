@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { render } from "../../test/render";
 import { HistorySwipeNavigation } from "./HistorySwipeNavigation";
+import { SidebarProjectSwipe } from "./sidebar/SidebarProjectSwipe";
 
 const navigateHistory = vi.hoisted(() => vi.fn());
 vi.mock("../navigationHistory", () => ({ canNavigateHistory: () => true, navigateHistory }));
@@ -57,5 +58,51 @@ describe("HistorySwipeNavigation", () => {
     }
 
     expect(navigateHistory).toHaveBeenCalledTimes(navigates ? 1 : 0);
+  });
+
+  it.each([
+    ["a swipe over the sidebar changes the project", "sidebar", 130, [["alpha"]], 0],
+    ["a short swipe over the sidebar changes nothing", "sidebar", 60, [], 0],
+    ["a swipe outside the sidebar navigates", "main", 130, [], 1],
+  ] as const)("%s", async (_name, zone, deltaX, selections, navigations) => {
+    navigateHistory.mockReset();
+    const onSelect = vi.fn();
+    await using screen = await render(
+      <>
+        <div data-slot="sidebar" data-testid="sidebar">
+          <SidebarProjectSwipe
+            groups={[{ projectKey: "alpha", displayName: "Alpha", pinned: true }]}
+            scopeKeys={[]}
+            onSelect={onSelect}
+          />
+        </div>
+        <div data-testid="main" />
+        <HistorySwipeNavigation />
+      </>,
+    );
+
+    swipe(screen.getByTestId(zone).element(), deltaX);
+
+    expect(onSelect.mock.calls.map(([keys]) => keys)).toEqual(selections);
+    expect(navigateHistory).toHaveBeenCalledTimes(navigations);
+  });
+
+  it("names the destination project during the swipe", async () => {
+    await using screen = await render(
+      <div data-slot="sidebar" data-testid="sidebar">
+        <SidebarProjectSwipe
+          groups={[{ projectKey: "alpha", displayName: "Alpha", pinned: true }]}
+          scopeKeys={[]}
+          onSelect={vi.fn()}
+        />
+      </div>,
+    );
+
+    screen
+      .getByTestId("sidebar")
+      .element()
+      .dispatchEvent(new WheelEvent("wheel", { deltaX: 60, bubbles: true, composed: true }));
+
+    await expect.element(screen.getByText("Alpha")).toBeInTheDocument();
   });
 });

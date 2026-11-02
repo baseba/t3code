@@ -15,6 +15,7 @@ import {
   isSidebarEnvironmentDisconnected,
   orderItemsByPreferredIds,
   pinOrderKeyBetween,
+  resolveSidebarProjectSwipeTarget,
   resolveSidebarSweepKeys,
   resolveSidebarThreadStatus,
   resolveThreadStatusPill,
@@ -811,6 +812,46 @@ describe("sortPinnedThreadsForSidebar", () => {
     ]);
 
     expect(sorted.map((thread) => thread.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("resolveSidebarProjectSwipeTarget", () => {
+  const group = (projectKey: string, pinned: boolean) => ({
+    projectKey,
+    displayName: projectKey.toUpperCase(),
+    pinned,
+  });
+  const mixed = [group("a", true), group("b", true), group("c", false)];
+  const unpinned = [group("a", false), group("b", false)];
+
+  it.each([
+    ["moves from all to the first pin", mixed, [], "forward", ["a"]],
+    ["moves between pins", mixed, ["a"], "forward", ["b"]],
+    ["wraps forward past the last pin to all", mixed, ["b"], "forward", []],
+    ["wraps back from all to the last pin", mixed, [], "back", ["b"]],
+    ["steps back to all", mixed, ["a"], "back", []],
+    ["walks every project when none is pinned", unpinned, ["a"], "forward", ["b"]],
+    ["wraps through unpinned projects", unpinned, [], "back", ["b"]],
+    ["enters at the first stop from an unpinned scope", mixed, ["c"], "forward", []],
+    ["enters at the last stop from an unpinned scope", mixed, ["c"], "back", ["b"]],
+    ["enters at the first stop from a multi-selection", mixed, ["a", "b"], "forward", []],
+    ["enters at the last stop from a multi-selection", mixed, ["a", "b"], "back", ["b"]],
+  ] as const)("%s", (_name, groups, scopeKeys, direction, keys) => {
+    expect(resolveSidebarProjectSwipeTarget({ groups, scopeKeys, direction })?.keys).toEqual(keys);
+  });
+
+  it("labels the stop it lands on", () => {
+    const input = { groups: mixed, scopeKeys: [], direction: "forward" } as const;
+    expect(resolveSidebarProjectSwipeTarget(input)?.label).toBe("A");
+    expect(resolveSidebarProjectSwipeTarget({ ...input, scopeKeys: ["b"] })?.label).toBe(
+      "All projects",
+    );
+  });
+
+  it("has nowhere to go without projects", () => {
+    expect(
+      resolveSidebarProjectSwipeTarget({ groups: [], scopeKeys: [], direction: "forward" }),
+    ).toBeNull();
   });
 });
 

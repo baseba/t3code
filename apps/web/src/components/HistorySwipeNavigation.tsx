@@ -1,5 +1,5 @@
 import { ArrowLeftIcon, ArrowRightIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 
 import { cn } from "../lib/utils";
 import { canNavigateHistory, navigateHistory, type HistoryDirection } from "../navigationHistory";
@@ -10,24 +10,29 @@ const SWIPE_AXIS_LOCK_DISTANCE = 8;
 const MOMENTUM_SAMPLE_SIZE = 5;
 
 type SwipeBounds = { left: number; top: number; width: number; height: number };
-type SwipeGesture =
+type SwipeGesture<TTarget> =
   | { kind: "pending"; path: EventTarget[]; y: number; sumX: number; sumY: number }
   | {
       kind: "tracking";
       direction: HistoryDirection;
+      target: TTarget;
       distance: number;
       deltas: number[];
       y: number;
-      bounds: SwipeBounds;
     }
   // Not a swipe, or one already decided: the rest of its events are ignored.
   | { kind: "ignored" };
-type SwipeIndicatorState = {
+export type SwipeState<TTarget> = {
   direction: HistoryDirection;
+  target: TTarget;
   progress: number;
   y: number;
-  bounds: SwipeBounds;
   tracking: boolean;
+};
+type TrackpadSwipeHandlers<TTarget> = {
+  /** Called when the axis locks. Returning null leaves the swipe to another listener. */
+  begin: (direction: HistoryDirection, path: readonly EventTarget[]) => TTarget | null;
+  commit: (direction: HistoryDirection, target: TTarget) => void;
 };
 
 function readMainContentBounds(): SwipeBounds {
@@ -52,9 +57,14 @@ function canScrollHorizontally(path: readonly EventTarget[], deltaX: number): bo
   return false;
 }
 
-function lockSwipeAxis(
-  pending: Extract<SwipeGesture, { kind: "pending" }>,
-): Exclude<SwipeGesture, { kind: "pending" }> {
+export function isOverSidebar(path: readonly EventTarget[]): boolean {
+  return path.some((node) => node instanceof Element && node.matches('[data-slot="sidebar"]'));
+}
+
+function lockSwipeAxis<TTarget>(
+  pending: Extract<SwipeGesture<TTarget>, { kind: "pending" }>,
+  begin: TrackpadSwipeHandlers<TTarget>["begin"],
+): Exclude<SwipeGesture<TTarget>, { kind: "pending" }> {
   const { path, sumX, sumY } = pending;
   if (Math.abs(sumX) <= Math.abs(sumY)) return { kind: "ignored" };
   if (path.some((node) => node instanceof Element && node.matches('[role="dialog"]'))) {
@@ -62,14 +72,15 @@ function lockSwipeAxis(
   }
   if (canScrollHorizontally(path, sumX)) return { kind: "ignored" };
   const direction = sumX < 0 ? "back" : "forward";
-  if (!canNavigateHistory(direction)) return { kind: "ignored" };
+  const target = begin(direction, path);
+  if (target === null) return { kind: "ignored" };
   return {
     kind: "tracking",
     direction,
+    target,
     distance: Math.abs(sumX),
     deltas: [],
     y: pending.y,
-    bounds: readMainContentBounds(),
   };
 }
 
@@ -88,19 +99,23 @@ export function isMomentumTail(deltas: readonly number[]): boolean {
   );
 }
 
-/** Two-finger horizontal trackpad swipes go back and forward, like a browser. */
-export function HistorySwipeNavigation() {
-  const [swipe, setSwipe] = useState<SwipeIndicatorState | null>(null);
+/** Tracks two-finger horizontal trackpad swipes that `begin` claims. */
+export function useTrackpadSwipe<TTarget>(
+  handlers: TrackpadSwipeHandlers<TTarget>,
+): SwipeState<TTarget> | null {
+  const [swipe, setSwipe] = useState<SwipeState<TTarget> | null>(null);
+  const begin = useEffectEvent(handlers.begin);
+  const commit = useEffectEvent(handlers.commit);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window wheel and desktop gesture listeners track trackpad swipes
   useEffect(() => {
-    let gesture: SwipeGesture | null = null;
+    let gesture: SwipeGesture<TTarget> | null = null;
     const hideIndicator = () =>
       setSwipe((current) => (current === null ? null : { ...current, tracking: false }));
-    // The fingers lifted: navigate if the swipe went far enough, then ignore its momentum.
+    // The fingers lifted: commit if the swipe went far enough, then ignore its momentum.
     const release = () => {
       if (gesture?.kind === "tracking" && gesture.distance >= SWIPE_TRIGGER_DISTANCE) {
-        navigateHistory(gesture.direction);
+        commit(gesture.direction, gesture.target);
       }
       gesture = { kind: "ignored" };
       hideIndicator();
@@ -125,7 +140,10 @@ export function HistorySwipeNavigation() {
         gesture.sumX += event.deltaX;
         gesture.sumY += event.deltaY;
         if (Math.abs(gesture.sumX) + Math.abs(gesture.sumY) < SWIPE_AXIS_LOCK_DISTANCE) return;
-        gesture = lockSwipeAxis({ ...gesture, path: [...gesture.path, ...event.composedPath()] });
+        gesture = lockSwipeAxis(
+          { ...gesture, path: [...gesture.path, ...event.composedPath()] },
+          (direction, path) => begin(direction, path),
+        );
         if (gesture.kind === "ignored") return;
       } else {
         const delta = gesture.direction === "back" ? -event.deltaX : event.deltaX;
@@ -136,9 +154,9 @@ export function HistorySwipeNavigation() {
       }
       setSwipe({
         direction: gesture.direction,
+        target: gesture.target,
         progress: Math.min(1, gesture.distance / SWIPE_TRIGGER_DISTANCE),
         y: gesture.y,
-        bounds: gesture.bounds,
         tracking: true,
       });
     };
@@ -150,11 +168,28 @@ export function HistorySwipeNavigation() {
     };
   }, []);
 
+  return swipe;
+}
+
+/** Two-finger horizontal trackpad swipes go back and forward, like a browser. */
+export function HistorySwipeNavigation() {
+  const swipe = useTrackpadSwipe({
+    begin: (direction, path) =>
+      !isOverSidebar(path) && canNavigateHistory(direction) ? readMainContentBounds() : null,
+    commit: (direction) => navigateHistory(direction),
+  });
+
   return swipe === null ? null : <SwipeIndicator {...swipe} />;
 }
 
 // A circle pinned to the edge of the main content that peeks in up to half its width.
-function SwipeIndicator({ direction, progress, y, bounds, tracking }: SwipeIndicatorState) {
+function SwipeIndicator({
+  direction,
+  target: bounds,
+  progress,
+  y,
+  tracking,
+}: SwipeState<SwipeBounds>) {
   const armed = progress >= 1;
   const Icon = direction === "back" ? ArrowLeftIcon : ArrowRightIcon;
   const hidden = 100 - progress * 50;
