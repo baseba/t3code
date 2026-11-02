@@ -1,8 +1,10 @@
 import { ArrowLeftIcon, ArrowRightIcon } from "lucide-react";
+import { useState, type RefObject } from "react";
 
 import { cn } from "../../lib/utils";
 import { isOverSidebar, useTrackpadSwipe, type SwipeState } from "../HistorySwipeNavigation";
 import { resolveSidebarProjectSwipeTarget } from "../Sidebar.logic";
+import { createSidebarSwipeMotion } from "../Sidebar.motion";
 
 type ProjectSwipeTarget = NonNullable<ReturnType<typeof resolveSidebarProjectSwipeTarget>>;
 
@@ -11,17 +13,28 @@ export function SidebarProjectSwipe({
   groups,
   scopeKeys,
   onSelect,
+  contentRef,
 }: {
   readonly groups: Parameters<typeof resolveSidebarProjectSwipeTarget>[0]["groups"];
   readonly scopeKeys: readonly string[];
   readonly onSelect: (keys: readonly string[]) => void;
+  readonly contentRef: RefObject<HTMLElement | null>;
 }) {
+  const [motion] = useState(createSidebarSwipeMotion);
+  const readViewport = () =>
+    contentRef.current?.closest<HTMLElement>("[data-slot=scroll-area-viewport]") ?? null;
   const swipe = useTrackpadSwipe({
     begin: (direction, path) =>
-      isOverSidebar(path)
+      isOverSidebar(path) && !motion.isSwapping()
         ? resolveSidebarProjectSwipeTarget({ groups, scopeKeys, direction })
         : null,
-    commit: (_direction, target) => onSelect(target.keys),
+    move: (direction, distance) =>
+      motion.track(readViewport(), direction === "forward" ? -distance : distance),
+    commit: (direction, target) =>
+      motion.finish(readViewport(), direction === "forward" ? "left" : "right", () =>
+        onSelect(target.keys),
+      ),
+    cancel: () => motion.settle(readViewport()),
   });
 
   return swipe === null ? null : <ProjectSwipeIndicator {...swipe} />;

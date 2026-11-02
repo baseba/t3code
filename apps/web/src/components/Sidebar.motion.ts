@@ -1,4 +1,7 @@
 const motionTiming = { duration: 150, easing: "ease-out" };
+const swipeExitTiming = { duration: 130, easing: "ease-in", fill: "forwards" } as const;
+const swipeEnterTiming = { duration: 220, easing: "cubic-bezier(0.16, 1, 0.3, 1)" };
+const swipeRest = { transform: "translateX(0px)", opacity: 1 };
 const rowTravel = (height: number) => Math.min(height, 40);
 // Fades clone removed rows and animate clones and entries; intervening layout reads force reflows.
 const MAX_FADED_ROWS_PER_UPDATE = 40;
@@ -9,6 +12,66 @@ function progress(animation: Animation) {
   return animation.playState === "finished"
     ? 1
     : (animation.effect?.getComputedTiming().progress ?? 0);
+}
+
+/**
+ * Slides the sidebar's scroll viewport with a swipe. Its scroll area clips it; moving the content
+ * inside it instead would add horizontal overflow. Only one list exists, so the swap happens off
+ * screen and the next project's list arrives from the other side.
+ */
+export function createSidebarSwipeMotion() {
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let running: Animation | null = null;
+  let swapping = false;
+
+  const takePose = (viewport: HTMLElement) => {
+    const { transform, opacity } = viewport.style;
+    viewport.style.removeProperty("transform");
+    viewport.style.removeProperty("opacity");
+    viewport.style.removeProperty("will-change");
+    return transform ? { transform, opacity } : swipeRest;
+  };
+
+  return {
+    /** A new swipe would pick its target from the scope being replaced. */
+    isSwapping: () => swapping,
+    track(viewport: HTMLElement | null, offset: number) {
+      if (!viewport || reducedMotion.matches) return;
+      running?.cancel();
+      running = null;
+      const width = viewport.offsetWidth;
+      const clamped = Math.max(-width, Math.min(width, offset));
+      viewport.style.willChange = "transform, opacity";
+      viewport.style.transform = `translateX(${clamped}px)`;
+      viewport.style.opacity = String(1 - (0.6 * Math.abs(clamped)) / width);
+    },
+    settle(viewport: HTMLElement | null) {
+      if (!viewport || reducedMotion.matches) return;
+      running = viewport.animate([takePose(viewport), swipeRest], motionTiming);
+    },
+    finish(viewport: HTMLElement | null, travel: "left" | "right", swap: () => void) {
+      if (!viewport || reducedMotion.matches) return swap();
+      const offset = travel === "left" ? -viewport.offsetWidth : viewport.offsetWidth;
+      swapping = true;
+      const exit = viewport.animate(
+        [takePose(viewport), { transform: `translateX(${offset}px)`, opacity: 0 }],
+        swipeExitTiming,
+      );
+      exit.addEventListener(
+        "finish",
+        () => {
+          swap();
+          swapping = false;
+          running = viewport.animate(
+            [{ transform: `translateX(${-offset}px)`, opacity: 0 }, swipeRest],
+            swipeEnterTiming,
+          );
+          exit.cancel();
+        },
+        { once: true },
+      );
+    },
+  };
 }
 
 /** Position the list so all direct children's offsetTop share an origin. */

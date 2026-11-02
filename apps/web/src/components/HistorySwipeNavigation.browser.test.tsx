@@ -13,6 +13,10 @@ function swipe(target: Element, deltaX: number) {
   }
 }
 
+function viewportOffset(viewport: HTMLElement) {
+  return new DOMMatrix(getComputedStyle(viewport).transform).m41;
+}
+
 describe("HistorySwipeNavigation", () => {
   it.each([
     ["scrolling left inside a shadow-root scroller keeps the thread", "shadow", 100, -130, false],
@@ -74,6 +78,7 @@ describe("HistorySwipeNavigation", () => {
             groups={[{ projectKey: "alpha", displayName: "Alpha", pinned: true }]}
             scopeKeys={[]}
             onSelect={onSelect}
+            contentRef={{ current: null }}
           />
         </div>
         <div data-testid="main" />
@@ -94,6 +99,7 @@ describe("HistorySwipeNavigation", () => {
           groups={[{ projectKey: "alpha", displayName: "Alpha", pinned: true }]}
           scopeKeys={[]}
           onSelect={vi.fn()}
+          contentRef={{ current: null }}
         />
       </div>,
     );
@@ -104,5 +110,63 @@ describe("HistorySwipeNavigation", () => {
       .dispatchEvent(new WheelEvent("wheel", { deltaX: 60, bubbles: true, composed: true }));
 
     await expect.element(screen.getByText("Alpha")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["forward", 130, -130, -200],
+    ["back", -130, 130, 200],
+  ] as const)(
+    "a %s swipe slides the list out and swaps it off screen",
+    async (_direction, deltaX, tracked, offScreen) => {
+      const content = document.createElement("div");
+      const swappedAt: number[] = [];
+      await using screen = await render(
+        <div data-slot="sidebar">
+          <div data-slot="scroll-area-viewport" data-testid="viewport" style={{ width: 200 }}>
+            <div ref={(node) => node?.append(content)} />
+          </div>
+          <SidebarProjectSwipe
+            groups={[{ projectKey: "alpha", displayName: "Alpha", pinned: true }]}
+            scopeKeys={[]}
+            onSelect={() => swappedAt.push(viewportOffset(viewport))}
+            contentRef={{ current: content }}
+          />
+        </div>,
+      );
+      const viewport = screen.getByTestId("viewport").element() as HTMLElement;
+
+      viewport.dispatchEvent(new WheelEvent("wheel", { deltaX, bubbles: true, composed: true }));
+      expect(viewport.style.transform).toBe(`translateX(${tracked}px)`);
+      viewport.dispatchEvent(new WheelEvent("wheel", { deltaX: 0, bubbles: true, composed: true }));
+
+      await vi.waitFor(() => expect(swappedAt).toEqual([offScreen]));
+      await vi.waitFor(() => expect(viewport.getAnimations()).toEqual([]));
+      expect(viewportOffset(viewport)).toBe(0);
+    },
+  );
+
+  it("a short swipe returns the list without changing the project", async () => {
+    const content = document.createElement("div");
+    const onSelect = vi.fn();
+    await using screen = await render(
+      <div data-slot="sidebar">
+        <div data-slot="scroll-area-viewport" data-testid="viewport" style={{ width: 200 }}>
+          <div ref={(node) => node?.append(content)} />
+        </div>
+        <SidebarProjectSwipe
+          groups={[{ projectKey: "alpha", displayName: "Alpha", pinned: true }]}
+          scopeKeys={[]}
+          onSelect={onSelect}
+          contentRef={{ current: content }}
+        />
+      </div>,
+    );
+    const viewport = screen.getByTestId("viewport").element() as HTMLElement;
+
+    swipe(viewport, 60);
+
+    await vi.waitFor(() => expect(viewport.getAnimations()).toEqual([]));
+    expect(viewportOffset(viewport)).toBe(0);
+    expect(onSelect).not.toHaveBeenCalled();
   });
 });

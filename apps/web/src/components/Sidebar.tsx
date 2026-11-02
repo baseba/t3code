@@ -3646,7 +3646,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         <SidebarProjectSwipe
           groups={scopeGroups}
           scopeKeys={projectScopeKeys}
-          onSelect={setProjectScopeKeys}
+          contentRef={sidebarContentRef}
+          onSelect={(keys) => {
+            // Row fades would replay the outgoing list inside the one sliding in.
+            listMotionRef.current?.suspend();
+            setProjectScopeKeys(keys);
+          }}
         />
       ) : null}
     </>

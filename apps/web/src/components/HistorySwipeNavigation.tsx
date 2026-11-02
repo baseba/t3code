@@ -33,6 +33,10 @@ type TrackpadSwipeHandlers<TTarget> = {
   /** Called when the axis locks. Returning null leaves the swipe to another listener. */
   begin: (direction: HistoryDirection, path: readonly EventTarget[]) => TTarget | null;
   commit: (direction: HistoryDirection, target: TTarget) => void;
+  /** Follows the fingers, in pixels along the swipe. */
+  move?: (direction: HistoryDirection, distance: number) => void;
+  /** The fingers lifted short of the commit distance. */
+  cancel?: () => void;
 };
 
 function readMainContentBounds(): SwipeBounds {
@@ -106,6 +110,10 @@ export function useTrackpadSwipe<TTarget>(
   const [swipe, setSwipe] = useState<SwipeState<TTarget> | null>(null);
   const begin = useEffectEvent(handlers.begin);
   const commit = useEffectEvent(handlers.commit);
+  const move = useEffectEvent((direction: HistoryDirection, distance: number) =>
+    handlers.move?.(direction, distance),
+  );
+  const cancel = useEffectEvent(() => handlers.cancel?.());
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window wheel and desktop gesture listeners track trackpad swipes
   useEffect(() => {
@@ -114,8 +122,9 @@ export function useTrackpadSwipe<TTarget>(
       setSwipe((current) => (current === null ? null : { ...current, tracking: false }));
     // The fingers lifted: commit if the swipe went far enough, then ignore its momentum.
     const release = () => {
-      if (gesture?.kind === "tracking" && gesture.distance >= SWIPE_TRIGGER_DISTANCE) {
-        commit(gesture.direction, gesture.target);
+      if (gesture?.kind === "tracking") {
+        if (gesture.distance >= SWIPE_TRIGGER_DISTANCE) commit(gesture.direction, gesture.target);
+        else cancel();
       }
       gesture = { kind: "ignored" };
       hideIndicator();
@@ -152,6 +161,7 @@ export function useTrackpadSwipe<TTarget>(
         if (isMomentumTail(gesture.deltas)) return release();
         gesture.distance = Math.max(0, gesture.distance + delta);
       }
+      move(gesture.direction, gesture.distance);
       setSwipe({
         direction: gesture.direction,
         target: gesture.target,
